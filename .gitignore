@@ -23,3 +23,5 @@ coverage.html
 .idea/
 .codex
 .claude
+__pycache__/
+*.pyc

@@ -1,3 +1,55 @@
+## AWS Lambda (`lambda` branch)
+
+This fork adds a Python 3.13 Lambda Function URL adapter and fixes upstream
+request signing for location names containing spaces (for example, Las Palmas).
+Signatures use form encoding (`+` for spaces), matching Idealista's verifier;
+upstream v0.1.1 used `%20`, causing HTTP 400 "Invalid request headers".
+The five MCP tools and their schemas remain compatible with upstream.
+
+```sh
+make test-lambda
+make lambda-package
+# Or: python3 lambda_package.py --output /path/to/build
+```
+
+`lambda_package.py` runs the Go tests and builds this checkout for **Linux ARM64**
+using a digest-pinned Go 1.26.1 Docker image. Docker is required; a local Go
+installation is not. It writes `pkg/idealista-mcp`, `pkg/lambda_handler.py`,
+`pkg/README.md` and `pkg/build-info.json` beneath the output directory. The build
+metadata records the source revision, dirty state and binary checksum. No
+credentials are bundled. The existing Go build targets also remain available.
+
+Deploy the package on an ARM64 Python 3.13 Lambda. The application handler is
+`lambda_handler.handler`; the deployment must put an authentication gate in front
+of it. The handler alone does not authenticate callers. Our deployment uses the
+shared GitHub OAuth gate from the separate private infrastructure repository,
+including on the bare Function URL.
+
+Required environment variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `IDEALISTA_CLIENT_KEY` | OAuth client ID |
+| `IDEALISTA_CLIENT_SECRET` | OAuth client secret |
+| `IDEALISTA_SIGNING_SECRET` | Raw request-signing secret, distinct from the OAuth secret |
+
+Inject secrets from your deployment's secret store, never commit them. The
+signing secret is the **raw** value; upstream base64-encodes it internally. A
+pre-encoded value would be encoded twice and signatures would fail.
+
+The adapter exposes stateless Streamable HTTP with JSON responses. It delegates
+protocol negotiation and tool handling to a new stdio process per invocation;
+notifications return 202, and GET/SSE is unsupported. The private `/tmp` config
+and upstream OAuth token/device cache are reused by warm invocations. The child
+does not inherit AWS credentials, gate secrets, or debug flags. Adapter errors
+hide subprocess stderr and redact upstream credentials and cached bearer tokens.
+Allow a 60-second Lambda timeout (the adapter bounds requests to 55 seconds).
+
+The local transport tests run without credentials or network access:
+`python3 -m unittest test_lambda_handler -v`.
+
+---
+
 <div align="center">
 
 **MCP server for the Idealista property search platform**

@@ -1,4 +1,13 @@
 .PHONY: all build install uninstall clean vet fmt lint fix deps update-deps run help
+.DEFAULT_GOAL := all
+.PHONY: lambda-package test-lambda
+
+# Build the fork's patched ARM64 binary in a pinned Go container.
+lambda-package:
+	python3 lambda_package.py
+
+test-lambda:
+	python3 -m unittest test_lambda_handler -v
 
 # Build variables
 BINARY_NAME=idealista-mcp

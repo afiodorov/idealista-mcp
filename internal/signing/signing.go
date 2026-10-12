@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/url"
-	"sort"
 	"strings"
 
 	"github.com/google/uuid"
@@ -32,7 +31,7 @@ func New(raw string) (*Signer, error) {
 // HTTP method and parameters. Returns the seed and hex-encoded signature.
 //
 // The signature input is: seed + METHOD + sortedEncode(queryParams) + sortedEncode(bodyParams)
-// This matches the JavaScript signing logic used in the Idealista mobile app.
+// Parameters use form encoding, matching the mobile API's signature verifier.
 func (s *Signer) Sign(method string, queryParams, bodyParams url.Values) (seed, signature string, err error) {
 	seed = uuid.New().String()
 	input := seed + strings.ToUpper(method) + sortedEncode(queryParams) + sortedEncode(bodyParams)
@@ -42,31 +41,9 @@ func (s *Signer) Sign(method string, queryParams, bodyParams url.Values) (seed, 
 	return seed, signature, nil
 }
 
-// sortedEncode encodes url.Values into a sorted query string using JS encodeURIComponent
-// semantics: keys are sorted lexicographically, spaces encoded as %20 (not +).
+// sortedEncode uses the same sorted form encoding as the HTTP query and body.
+// In particular, spaces must be '+'; signing them as '%20' makes searches such
+// as "Las Palmas" fail with HTTP 400 "Invalid request headers".
 func sortedEncode(params url.Values) string {
-	if len(params) == 0 {
-		return ""
-	}
-	keys := make([]string, 0, len(params))
-	for k := range params {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	parts := make([]string, 0, len(params))
-	for _, k := range keys {
-		for _, v := range params[k] {
-			parts = append(parts, jsEncodeURIComponent(k)+"="+jsEncodeURIComponent(v))
-		}
-	}
-	return strings.Join(parts, "&")
-}
-
-// jsEncodeURIComponent encodes a string matching JavaScript's encodeURIComponent:
-// unreserved chars A-Z a-z 0-9 - _ . ! ~ * ' ( ) are not encoded; spaces → %20.
-func jsEncodeURIComponent(s string) string {
-	encoded := url.QueryEscape(s)
-	// url.QueryEscape uses + for spaces; JS encodeURIComponent uses %20.
-	return strings.ReplaceAll(encoded, "+", "%20")
+	return params.Encode()
 }
